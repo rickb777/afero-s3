@@ -3,6 +3,8 @@ package s3
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
+	"encoding/base64"
 	"io"
 	"os"
 	"path/filepath"
@@ -10,7 +12,6 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/spf13/afero"
 )
 
 // File represents a file in S3.
@@ -18,7 +19,7 @@ import (
 type File struct {
 	bucket string
 	name   string
-	s3Fs   afero.Fs
+	s3Fs   Fs
 	s3API  S3APISubset
 
 	// state
@@ -35,7 +36,7 @@ type File struct {
 }
 
 // NewFile initializes an File object.
-func NewFile(bucket, name string, s3API S3APISubset, s3Fs afero.Fs) *File {
+func NewFile(bucket, name string, s3API S3APISubset, s3Fs Fs) *File {
 	return &File{
 		bucket: bucket,
 		name:   name,
@@ -338,18 +339,40 @@ func (f *File) finaliseWrite() error {
 		panic("TODO: non-offset == 0 write")
 	}
 
-	// TODO use MD5 checksum
+	hasher := md5.New()
+	_, err := io.Copy(hasher, f.writeBuf)
+	if err != nil {
+		return err
+	}
+	hashBytes := hasher.Sum(nil)
+	hashB64 := base64.StdEncoding.EncodeToString(hashBytes)
 
 	readSeeker := bytes.NewReader(f.writeBuf.Bytes())
 	if _, err := f.s3API.PutObjectWithContext(f.ctx, &s3.PutObjectInput{
-		Bucket: aws.String(f.bucket),
-		Key:    aws.String(f.name),
-		Body:   readSeeker,
+		Bucket:      aws.String(f.bucket),
+		Key:         aws.String(f.name),
+		Body:        readSeeker,
+		ContentType: f.lookupContentType(),
+		ContentMD5:  aws.String(hashB64),
 		//ServerSideEncryption: aws.String("AES256"),
 	}); err != nil {
 		return err
 	}
 
+	return nil
+}
+
+func (f *File) lookupContentType() *string {
+	ext := filepath.Ext(f.name)
+	if len(ext) > 1 {
+		if ext[0] == '.' {
+			ext = ext[1:]
+		}
+		typ, defined := f.s3Fs.mimeTypes[ext]
+		if defined {
+			return aws.String(typ)
+		}
+	}
 	return nil
 }
 

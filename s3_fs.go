@@ -7,6 +7,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/awserr"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -16,20 +17,40 @@ import (
 
 // Fs is an FS object backed by S3.
 type Fs struct {
-	bucket string
-	s3API  S3APISubset
-	ctx    aws.Context
+	bucket    string
+	s3API     S3APISubset
+	mimeTypes map[string]string
+	ctx       aws.Context
 }
 
 // NewFs creates a new Fs object writing files to a given S3 bucket.
 func NewFs(bucket string, s3API S3APISubset) *Fs {
-	return &Fs{bucket: bucket, s3API: s3API, ctx: context.Background()}
+	return &Fs{
+		bucket:    bucket,
+		s3API:     s3API,
+		mimeTypes: make(map[string]string),
+		ctx:       context.Background(),
+	}
 }
 
 // WithContext sets the context in a new instance of the file system.
 func (fs Fs) WithContext(ctx aws.Context) *Fs {
 	fs.ctx = ctx
 	return &fs
+}
+
+// AddMimeTypes adds MIME types. When uploading (i.e. writing) files, these are
+// used to set the content type based on the file extension.
+//
+// Any file uploaded without its MIME type defined here will assume the default,
+// application/octet-stream.
+func (fs *Fs) AddMimeTypes(mimeTypes map[string]string) {
+	for k, v := range mimeTypes {
+		if strings.HasPrefix(k, ".") {
+			k = k[1:]
+		}
+		fs.mimeTypes[k] = v
+	}
 }
 
 // Name returns the type of FS object this is: S3/bucket.
