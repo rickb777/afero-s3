@@ -2,6 +2,7 @@ package s3
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"os"
 	"path/filepath"
@@ -9,7 +10,6 @@ import (
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/aws/aws-sdk-go/service/s3/s3iface"
 	"github.com/spf13/afero"
 )
 
@@ -19,19 +19,23 @@ type File struct {
 	bucket string
 	name   string
 	s3Fs   afero.Fs
-	s3API  s3iface.S3API
+	s3API  S3APISubset
 
 	// state
-	offset int
-	closed bool
+	offset     int64
+	closed     bool
+	readCloser io.ReadCloser
+	writeBuf   *bytes.Buffer
 
 	// readdir state
 	readdirContinuationToken *string
 	readdirNotTruncated      bool
+
+	ctx aws.Context
 }
 
 // NewFile initializes an File object.
-func NewFile(bucket, name string, s3API s3iface.S3API, s3Fs afero.Fs) *File {
+func NewFile(bucket, name string, s3API S3APISubset, s3Fs afero.Fs) *File {
 	return &File{
 		bucket: bucket,
 		name:   name,
@@ -39,7 +43,14 @@ func NewFile(bucket, name string, s3API s3iface.S3API, s3Fs afero.Fs) *File {
 		s3Fs:   s3Fs,
 		offset: 0,
 		closed: false,
+		ctx:    context.Background(),
 	}
+}
+
+// WithContext sets the context in a new instance of the file.
+func (f File) WithContext(ctx aws.Context) *File {
+	f.ctx = ctx
+	return &f
 }
 
 // Name returns the filename, i.e. S3 path without the bucket name.
@@ -66,27 +77,32 @@ func (f *File) Readdir(n int) ([]os.FileInfo, error) {
 	if n <= 0 {
 		return f.ReaddirAll()
 	}
+
 	// ListObjects treats leading slashes as part of the directory name
 	// It also needs a trailing slash to list contents of a directory.
 	name := trimLeadingSlash(f.Name()) + "/"
-	output, err := f.s3API.ListObjectsV2(&s3.ListObjectsV2Input{
+	output, err := f.s3API.ListObjectsV2WithContext(f.ctx, &s3.ListObjectsV2Input{
 		ContinuationToken: f.readdirContinuationToken,
 		Bucket:            aws.String(f.bucket),
 		Prefix:            aws.String(name),
 		Delimiter:         aws.String("/"),
 		MaxKeys:           aws.Int64(int64(n)),
 	})
+
 	if err != nil {
 		return nil, err
 	}
+
 	f.readdirContinuationToken = output.NextContinuationToken
 	if !(*output.IsTruncated) {
 		f.readdirNotTruncated = true
 	}
+
 	fis := []os.FileInfo{}
 	for _, subfolder := range output.CommonPrefixes {
 		fis = append(fis, NewFileInfo(filepath.Base("/"+*subfolder.Prefix), true, 0, time.Time{}))
 	}
+
 	for _, fileObject := range output.Contents {
 		if hasTrailingSlash(*fileObject.Key) {
 			// S3 includes <name>/ in the Contents listing for <name>
@@ -103,7 +119,7 @@ func (f *File) Readdir(n int) ([]os.FileInfo, error) {
 func (f *File) ReaddirAll() ([]os.FileInfo, error) {
 	fileInfos := []os.FileInfo{}
 	for {
-		infos, err := f.Readdir(100)
+		infos, err := f.Readdir(1024)
 		fileInfos = append(fileInfos, infos...)
 		if err != nil {
 			if err == io.EOF {
@@ -164,8 +180,21 @@ func (f *File) WriteString(s string) (int, error) {
 // Close closes the File, rendering it unusable for I/O.
 // It returns an error, if any.
 func (f *File) Close() error {
+	var err error
+
+	if f.readCloser != nil {
+		err = f.readCloser.Close()
+		f.readCloser = nil
+	}
+
+	if f.writeBuf != nil {
+		err = f.finaliseWrite()
+		f.writeBuf = nil
+	}
+
 	f.closed = true
-	return nil
+	f.offset = 0
+	return err
 }
 
 // Read reads up to len(b) bytes from the File.
@@ -176,23 +205,56 @@ func (f *File) Read(p []byte) (int, error) {
 		// mimic os.File's read after close behavior
 		panic("read after close")
 	}
-	if f.offset != 0 {
-		panic("TODO: non-offset == 0 read")
-	}
 	if len(p) == 0 {
 		return 0, nil
 	}
-	output, err := f.s3API.GetObject(&s3.GetObjectInput{
-		Bucket: aws.String(f.bucket),
-		Key:    aws.String(f.name),
-	})
-	if err != nil {
-		return 0, err
+
+	if f.readCloser == nil {
+		output, err := f.s3API.GetObjectWithContext(f.ctx, &s3.GetObjectInput{
+			Bucket: aws.String(f.bucket),
+			Key:    aws.String(f.name),
+		})
+		if err != nil {
+			return 0, err
+		}
+
+		f.readCloser = output.Body
+
+		err = f.skipBytes(f.offset)
+		if err != nil {
+			return 0, err
+		}
 	}
-	defer output.Body.Close()
-	n, err := output.Body.Read(p)
-	f.offset += n
+
+	n, err := f.readCloser.Read(p)
+	f.offset += int64(n)
 	return n, err
+}
+
+func (f *File) skipBytes(toSkip int64) error {
+	if f.readCloser == nil {
+		return nil
+	}
+
+	if toSkip > 1024 {
+		junk := make([]byte, 1024)
+		for ; toSkip > 1024; toSkip -= 1024 {
+			_, err := f.readCloser.Read(junk)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	if toSkip > 0 {
+		junk := make([]byte, toSkip)
+		_, err := f.readCloser.Read(junk)
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // ReadAt reads len(p) bytes from the file starting at byte offset off.
@@ -216,14 +278,33 @@ func (f *File) ReadAt(p []byte, off int64) (n int, err error) {
 func (f *File) Seek(offset int64, whence int) (int64, error) {
 	switch whence {
 	case 0:
-		f.offset = int(offset)
+		if f.readCloser != nil {
+			// already reading so force the file to re-open on next read
+			err := f.readCloser.Close()
+			f.readCloser = nil
+			if err != nil {
+				return 0, err
+			}
+		}
+
+		if f.writeBuf != nil {
+			panic("not implemented")
+		}
+
+		f.offset = offset
+
 	case 1:
-		f.offset += int(offset)
+		err := f.skipBytes(offset)
+		if err != nil {
+			return 0, err
+		}
+		f.offset += offset
+
 	case 2:
 		// can probably do this if we had GetObjectOutput (ContentLength)
 		panic("TODO: whence == 2 seek")
 	}
-	return int64(f.offset), nil
+	return f.offset, nil
 }
 
 // Write writes len(b) bytes to the File.
@@ -234,21 +315,40 @@ func (f *File) Write(p []byte) (int, error) {
 		// mimic os.File's write after close behavior
 		panic("write after close")
 	}
+	//if f.offset != 0 {
+	//	panic("TODO: non-offset == 0 write")
+	//}
+
+	if f.writeBuf == nil {
+		f.writeBuf = &bytes.Buffer{}
+	}
+
+	return f.writeBuf.Write(p)
+}
+
+// finaliseWrite upload the write buffer contents to the S3 object. It is not possible
+// to alter S3 objects (or even write them incrementally) so this is the only way they
+// can be written.
+func (f *File) finaliseWrite() error {
+	if f.closed {
+		// mimic os.File's write after close behavior
+		panic("write after close")
+	}
 	if f.offset != 0 {
 		panic("TODO: non-offset == 0 write")
 	}
-	readSeeker := bytes.NewReader(p)
-	size := int(readSeeker.Size())
-	if _, err := f.s3API.PutObject(&s3.PutObjectInput{
-		Bucket:               aws.String(f.bucket),
-		Key:                  aws.String(f.name),
-		Body:                 readSeeker,
-		ServerSideEncryption: aws.String("AES256"),
+
+	readSeeker := bytes.NewReader(f.writeBuf.Bytes())
+	if _, err := f.s3API.PutObjectWithContext(f.ctx, &s3.PutObjectInput{
+		Bucket: aws.String(f.bucket),
+		Key:    aws.String(f.name),
+		Body:   readSeeker,
+		//ServerSideEncryption: aws.String("AES256"),
 	}); err != nil {
-		return 0, err
+		return err
 	}
-	f.offset += size
-	return size, nil
+
+	return nil
 }
 
 // WriteAt writes len(p) bytes to the file starting at byte offset off.
