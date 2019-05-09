@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -41,15 +41,17 @@ func (fs Fs) Create(name string) (afero.File, error) {
 	if err != nil {
 		return file, err
 	}
+
 	// Create(), like all of S3, is eventually consistent.
 	// To protect against unexpected behavior, have this method
 	// wait until S3 reports the object exists.
-	if s3Client, ok := fs.s3API.(*s3.S3); ok {
-		return file, s3Client.WaitUntilObjectExists(&s3.HeadObjectInput{
-			Bucket: aws.String(fs.bucket),
-			Key:    aws.String(name),
-		})
-	}
+	//if s3Client, ok := fs.s3API.(*s3.S3); ok {
+	//	return file, s3Client.WaitUntilObjectExists(&s3.HeadObjectInput{
+	//		Bucket: aws.String(fs.bucket),
+	//		Key:    aws.String(name),
+	//	})
+	//}
+
 	// TODO improved performance under failure conditions can be achieved by
 	// using a trial PUT operation with status code 100-Continue before
 	// actually processing large amounts of data
@@ -186,9 +188,10 @@ func (fs Fs) Stat(name string) (os.FileInfo, error) {
 	})
 
 	if err != nil {
-		if strings.Contains(err.Error(), "404") {
-			statDir, err := fs.statDirectory(name)
-			return statDir, err
+		if re := err.(awserr.RequestFailure); re.StatusCode() == 404 {
+			//if strings.Contains(err.Error(), "404") {
+			statDir, e2 := fs.statDirectory(name)
+			return statDir, e2
 		}
 		return FileInfo{}, &os.PathError{
 			Op:   "stat",

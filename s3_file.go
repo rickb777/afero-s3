@@ -338,6 +338,8 @@ func (f *File) finaliseWrite() error {
 		panic("TODO: non-offset == 0 write")
 	}
 
+	// TODO use MD5 checksum
+
 	readSeeker := bytes.NewReader(f.writeBuf.Bytes())
 	if _, err := f.s3API.PutObjectWithContext(f.ctx, &s3.PutObjectInput{
 		Bucket: aws.String(f.bucket),
