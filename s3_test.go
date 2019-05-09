@@ -24,6 +24,31 @@ var _ afero.File = (*File)(nil)
 // test s3.FileInfo is compatible with os.FileInfo
 var _ os.FileInfo = (*FileInfo)(nil)
 
+//func TestUpload(t *testing.T) {
+//	g := NewGomegaWithT(t)
+//
+//	sess, err := session.NewSession(&aws.Config{
+//		Region:      aws.String("eu-west-1"),
+//		Credentials: credentials.NewSharedCredentials("", "mh"),
+//	})
+//	g.Expect(err).NotTo(HaveOccurred())
+//
+//	fs := NewFs("image-stock", s3.New(sess))
+//	// could populate this from /etc/mime.types
+//	fs.AddMimeTypes(map[string]string{
+//		"txt": "text/plain",
+//	})
+//
+//	f, err := fs.Create("/hello.txt")
+//	g.Expect(err).NotTo(HaveOccurred())
+//
+//	_, err = f.WriteString("Hello world!\n")
+//	g.Expect(err).NotTo(HaveOccurred())
+//
+//	err = f.Close()
+//	g.Expect(err).NotTo(HaveOccurred())
+//}
+
 func TestName(t *testing.T) {
 	g := NewGomegaWithT(t)
 
