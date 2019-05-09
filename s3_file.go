@@ -3,6 +3,8 @@ package s3
 import (
 	"bytes"
 	"context"
+	"crypto/md5"
+	"encoding/base64"
 	"io"
 	"os"
 	"path/filepath"
@@ -337,22 +339,24 @@ func (f *File) finaliseWrite() error {
 		panic("TODO: non-offset == 0 write")
 	}
 
-	//hasher := md5.New()
-	//_, err := f.writeBuf.WriteTo(hasher)
-	//if err != nil {
-	//	return err
-	//}
-	//hashBytes := hasher.Sum(nil)
-	//hashB64 := base64.StdEncoding.EncodeToString(hashBytes)
-	////fmt.Println(hashB64)
+	buf := f.writeBuf.Bytes()
+	hasher := md5.New()
+	_, err := hasher.Write(buf)
+	if err != nil {
+		return err
+	}
+	hashBytes := hasher.Sum(nil)
+	hashB64 := base64.StdEncoding.EncodeToString(hashBytes)
+	//fmt.Printf("%x\n", hashBytes)
+	//fmt.Println(hashB64)
 
-	readSeeker := bytes.NewReader(f.writeBuf.Bytes())
+	readSeeker := bytes.NewReader(buf)
 	if _, err := f.s3API.PutObjectWithContext(f.ctx, &s3.PutObjectInput{
 		Bucket:      aws.String(f.bucket),
 		Key:         aws.String(f.name),
 		Body:        readSeeker,
 		ContentType: f.lookupContentType(),
-		//ContentMD5:  aws.String(hashB64),
+		ContentMD5:  aws.String(hashB64),
 		//ServerSideEncryption: aws.String("AES256"),
 	}); err != nil {
 		return err

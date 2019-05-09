@@ -24,7 +24,7 @@ var _ afero.File = (*File)(nil)
 // test s3.FileInfo is compatible with os.FileInfo
 var _ os.FileInfo = (*FileInfo)(nil)
 
-//func TestUpload(t *testing.T) {
+//func TestS3Upload(t *testing.T) {
 //	g := NewGomegaWithT(t)
 //
 //	sess, err := session.NewSession(&aws.Config{
@@ -42,7 +42,10 @@ var _ os.FileInfo = (*FileInfo)(nil)
 //	f, err := fs.Create("/hello.txt")
 //	g.Expect(err).NotTo(HaveOccurred())
 //
-//	_, err = f.WriteString("Hello world!\n")
+//	_, err = f.WriteString("So shaken as we are,\nSo wan with care!\n")
+//	g.Expect(err).NotTo(HaveOccurred())
+//
+//	_, err = f.WriteString("Find we a time for frighted peace to pant\nand breath short-winded accents of new broils...\n")
 //	g.Expect(err).NotTo(HaveOccurred())
 //
 //	err = f.Close()
