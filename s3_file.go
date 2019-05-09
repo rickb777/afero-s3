@@ -345,7 +345,7 @@ func (f *File) finaliseWrite() error {
 		return err
 	}
 	hashBytes := hasher.Sum(nil)
-	hashB64 := base64.StdEncoding.EncodeToString(hashBytes)
+	hashB64 := base64.RawStdEncoding.EncodeToString(hashBytes)
 
 	readSeeker := bytes.NewReader(f.writeBuf.Bytes())
 	if _, err := f.s3API.PutObjectWithContext(f.ctx, &s3.PutObjectInput{
