@@ -60,6 +60,7 @@ func (fs Fs) Name() string { return "S3/" + fs.bucket }
 func (fs Fs) Create(name string) (afero.File, error) {
 	file, err := fs.Open(name)
 	if err != nil {
+		lgr("Create %s %q > %+v\n", fs.bucket, name, err)
 		return file, err
 	}
 
@@ -77,12 +78,14 @@ func (fs Fs) Create(name string) (afero.File, error) {
 	// using a trial PUT operation with status code 100-Continue before
 	// actually processing large amounts of data
 	// (see https://docs.aws.amazon.com/AmazonS3/latest/API/RESTObjectPUT.html)
+	lgr("Create %s %q\n", fs.bucket, name)
 	return file, err
 }
 
 // Mkdir makes a directory in S3.
 func (fs Fs) Mkdir(name string, perm os.FileMode) error {
 	_, err := fs.OpenFile(fmt.Sprintf("%s/", filepath.Clean(name)), os.O_CREATE, perm)
+	lgr("Mkdir %s %q, %v > %+v\n", fs.bucket, name, perm, err)
 	return err
 }
 
@@ -98,8 +101,10 @@ func (fs Fs) Open(name string) (afero.File, error) {
 		if os.IsNotExist(err) {
 			return fs.OpenFile(name, os.O_CREATE, 0777)
 		}
+		lgr("Open %s %q > %+v\n", fs.bucket, name, err)
 		return (*File)(nil), err
 	}
+	lgr("Open %s %q\n", fs.bucket, name)
 	return NewFile(fs.bucket, name, fs.s3API, fs).WithContext(fs.ctx), nil
 }
 
@@ -107,13 +112,16 @@ func (fs Fs) Open(name string) (afero.File, error) {
 func (fs Fs) OpenFile(name string, flag int, perm os.FileMode) (afero.File, error) {
 	file := NewFile(fs.bucket, name, fs.s3API, fs).WithContext(fs.ctx)
 	if flag&os.O_APPEND != 0 {
+		lgr("OpenFile %s %q append disallowed\n", fs.bucket, name)
 		return file, errors.New("S3 is eventually consistent. Appending files will lead to trouble")
 	}
 	if flag&os.O_CREATE != 0 {
 		if _, err := file.WriteString(""); err != nil {
+			lgr("OpenFile %s %q > %+v\n", fs.bucket, name, err)
 			return file, err
 		}
 	}
+	lgr("OpenFile %s %q\n", fs.bucket, name)
 	return file, nil
 }
 
@@ -126,6 +134,7 @@ func (fs Fs) Remove(name string) error {
 		Bucket: aws.String(fs.bucket),
 		Key:    aws.String(name),
 	})
+	lgr("Remove %s %q > %+v\n", fs.bucket, name, err)
 	return err
 }
 
@@ -135,6 +144,7 @@ func (fs Fs) ForceRemove(name string) error {
 		Bucket: aws.String(fs.bucket),
 		Key:    aws.String(name),
 	})
+	lgr("ForceRemove %s %q > %+v\n", fs.bucket, name, err)
 	return err
 }
 
@@ -143,6 +153,7 @@ func (fs Fs) RemoveAll(path string) error {
 	s3dir := NewFile(fs.bucket, path, fs.s3API, fs).WithContext(fs.ctx)
 	fis, err := s3dir.Readdir(0)
 	if err != nil {
+		lgr("RemoveAll %s Readdir %q > %+v\n", fs.bucket, path, err)
 		return err
 	}
 	for _, fi := range fis {
@@ -161,6 +172,7 @@ func (fs Fs) RemoveAll(path string) error {
 	if err := fs.ForceRemove(s3dir.Name() + "/"); err != nil {
 		return err
 	}
+	lgr("RemoveAll %s %q\n", fs.bucket, path)
 	return nil
 }
 
@@ -170,6 +182,7 @@ func (fs Fs) RemoveAll(path string) error {
 // the original.
 func (fs Fs) Rename(oldname, newname string) error {
 	if oldname == newname {
+		lgr("Rename %s %q %q (no-op)\n", fs.bucket, oldname, newname)
 		return nil
 	}
 	_, err := fs.s3API.CopyObjectWithContext(fs.ctx, &s3.CopyObjectInput{
@@ -179,12 +192,14 @@ func (fs Fs) Rename(oldname, newname string) error {
 		ServerSideEncryption: aws.String("AES256"),
 	})
 	if err != nil {
+		lgr("Rename %s copy %q %q > %+v\n", fs.bucket, oldname, newname, err)
 		return err
 	}
 	_, err = fs.s3API.DeleteObjectWithContext(fs.ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(fs.bucket),
 		Key:    aws.String(oldname),
 	})
+	lgr("Rename %s %q %q > %+v\n", fs.bucket, oldname, newname, err)
 	return err
 }
 
@@ -209,11 +224,11 @@ func (fs Fs) Stat(name string) (os.FileInfo, error) {
 	})
 
 	if err != nil {
-		if re := err.(awserr.RequestFailure); re.StatusCode() == 404 {
-			//if strings.Contains(err.Error(), "404") {
+		if ae, ok := err.(awserr.Error); ok && ae.Code() == s3.ErrCodeNoSuchKey {
 			statDir, e2 := fs.statDirectory(name)
 			return statDir, e2
 		}
+		lgr("Stat %s %q > %+v\n", fs.bucket, name, err)
 		return FileInfo{}, &os.PathError{
 			Op:   "stat",
 			Path: name,
@@ -223,6 +238,7 @@ func (fs Fs) Stat(name string) (os.FileInfo, error) {
 
 	if hasTrailingSlash(name) {
 		// user asked for a directory, but this is a file
+		lgr("Stat %s %q is a file\n", fs.bucket, name)
 		return FileInfo{}, &os.PathError{
 			Op:   "stat",
 			Path: name,
@@ -230,6 +246,7 @@ func (fs Fs) Stat(name string) (os.FileInfo, error) {
 		}
 	}
 
+	lgr("Stat %s %q\n", fs.bucket, name)
 	return NewFileInfo(filepath.Base(name), false, *out.ContentLength, *out.LastModified), nil
 }
 
@@ -242,6 +259,7 @@ func (fs Fs) statDirectory(name string) (os.FileInfo, error) {
 	})
 
 	if err != nil {
+		lgr("Stat %s %q > os.PathError %+v\n", fs.bucket, name, err)
 		return FileInfo{}, &os.PathError{
 			Op:   "stat",
 			Path: name,
@@ -250,6 +268,7 @@ func (fs Fs) statDirectory(name string) (os.FileInfo, error) {
 	}
 
 	if *out.KeyCount == 0 && name != "" {
+		lgr("Stat %s %q > os.PathError os.ErrNotExist\n", fs.bucket, name)
 		return FileInfo{}, &os.PathError{
 			Op:   "stat",
 			Path: name,
@@ -257,6 +276,7 @@ func (fs Fs) statDirectory(name string) (os.FileInfo, error) {
 		}
 	}
 
+	lgr("Stat %s %q is directory\n", fs.bucket, name)
 	return NewFileInfo(filepath.Base(name), true, 0, time.Time{}), nil
 }
 
@@ -269,3 +289,11 @@ func (Fs) Chmod(name string, mode os.FileMode) error {
 func (Fs) Chtimes(name string, atime time.Time, mtime time.Time) error {
 	panic("implement Chtimes")
 }
+
+// SetLogger sets a debug logger for observing S3 accesses. This is
+// compatible with 'log.Printf'. The default value is a no-op function.
+func SetLogger(fn func(format string, v ...interface{})) {
+	lgr = fn
+}
+
+var lgr = func(format string, v ...interface{}) {}
