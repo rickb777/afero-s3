@@ -224,6 +224,10 @@ func (fs Fs) Stat(name string) (os.FileInfo, error) {
 	})
 
 	if err != nil {
+		if re, ok := err.(awserr.RequestFailure); ok && re.StatusCode() == 404 {
+			statDir, e2 := fs.statDirectory(name)
+			return statDir, e2
+		}
 		if ae, ok := err.(awserr.Error); ok && ae.Code() == s3.ErrCodeNoSuchKey {
 			statDir, e2 := fs.statDirectory(name)
 			return statDir, e2
