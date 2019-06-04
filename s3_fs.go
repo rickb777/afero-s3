@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/aws/aws-sdk-go/aws/awserr"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/spf13/afero"
 )
@@ -60,6 +60,9 @@ func (fs Fs) Name() string { return "S3/" + fs.bucket }
 func (fs Fs) Create(name string) (afero.File, error) {
 	file, err := fs.Open(name)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return fs.OpenFile(name, os.O_CREATE, 0777)
+		}
 		lgr("Create %s %q > %+v\n", fs.bucket, name, err)
 		return file, err
 	}
@@ -85,8 +88,13 @@ func (fs Fs) Create(name string) (afero.File, error) {
 // Mkdir makes a directory in S3.
 func (fs Fs) Mkdir(name string, perm os.FileMode) error {
 	_, err := fs.OpenFile(fmt.Sprintf("%s/", filepath.Clean(name)), os.O_CREATE, perm)
-	lgr("Mkdir %s %q, %v > %+v\n", fs.bucket, name, perm, err)
-	return err
+	if err != nil {
+		lgr("Mkdir %s %q, %v > %+v\n", fs.bucket, name, perm, err)
+		return err
+	}
+
+	lgr("Mkdir %s %q, %v\n", fs.bucket, name, perm)
+	return nil
 }
 
 // MkdirAll creates a directory and all parent directories if necessary.
@@ -95,15 +103,12 @@ func (fs Fs) MkdirAll(path string, perm os.FileMode) error {
 }
 
 // Open a file for reading.
-// If the file doesn't exist, Open will create the file.
 func (fs Fs) Open(name string) (afero.File, error) {
 	if _, err := fs.Stat(name); err != nil {
-		if os.IsNotExist(err) {
-			return fs.OpenFile(name, os.O_CREATE, 0777)
-		}
 		lgr("Open %s %q > %+v\n", fs.bucket, name, err)
 		return (*File)(nil), err
 	}
+
 	lgr("Open %s %q\n", fs.bucket, name)
 	return NewFile(fs.bucket, name, fs.s3API, fs).WithContext(fs.ctx), nil
 }
@@ -111,16 +116,19 @@ func (fs Fs) Open(name string) (afero.File, error) {
 // OpenFile opens a file.
 func (fs Fs) OpenFile(name string, flag int, perm os.FileMode) (afero.File, error) {
 	file := NewFile(fs.bucket, name, fs.s3API, fs).WithContext(fs.ctx)
+
 	if flag&os.O_APPEND != 0 {
 		lgr("OpenFile %s %q append disallowed\n", fs.bucket, name)
 		return file, errors.New("S3 is eventually consistent. Appending files will lead to trouble")
 	}
+
 	if flag&os.O_CREATE != 0 {
 		if _, err := file.WriteString(""); err != nil {
 			lgr("OpenFile %s %q > %+v\n", fs.bucket, name, err)
 			return file, err
 		}
 	}
+
 	lgr("OpenFile %s %q\n", fs.bucket, name)
 	return file, nil
 }
@@ -134,8 +142,14 @@ func (fs Fs) Remove(name string) error {
 		Bucket: aws.String(fs.bucket),
 		Key:    aws.String(name),
 	})
-	lgr("Remove %s %q > %+v\n", fs.bucket, name, err)
-	return err
+
+	if err != nil {
+		lgr("Remove %s %q > %+v\n", fs.bucket, name, err)
+		return err
+	}
+
+	lgr("Remove %s %q\n", fs.bucket, name)
+	return nil
 }
 
 // ForceRemove doesn't error if a file does not exist.
@@ -144,8 +158,14 @@ func (fs Fs) ForceRemove(name string) error {
 		Bucket: aws.String(fs.bucket),
 		Key:    aws.String(name),
 	})
-	lgr("ForceRemove %s %q > %+v\n", fs.bucket, name, err)
-	return err
+
+	if err != nil {
+		lgr("ForceRemove %s %q > %+v\n", fs.bucket, name, err)
+		return err
+	}
+
+	lgr("ForceRemove %s %q\n", fs.bucket, name)
+	return nil
 }
 
 // RemoveAll removes a path.
@@ -156,22 +176,28 @@ func (fs Fs) RemoveAll(path string) error {
 		lgr("RemoveAll %s Readdir %q > %+v\n", fs.bucket, path, err)
 		return err
 	}
+
 	for _, fi := range fis {
 		fullpath := filepath.Join(s3dir.Name(), fi.Name())
 		if fi.IsDir() {
 			if err := fs.RemoveAll(fullpath); err != nil {
+				lgr("RemoveAll %s %q > %+v\n", fs.bucket, path, err)
 				return err
 			}
 		} else {
 			if err := fs.ForceRemove(fullpath); err != nil {
+				lgr("RemoveAll %s %q > %+v\n", fs.bucket, path, err)
 				return err
 			}
 		}
 	}
+
 	// finally remove the "file" representing the directory
 	if err := fs.ForceRemove(s3dir.Name() + "/"); err != nil {
+		lgr("RemoveAll %s %q > %+v\n", fs.bucket, path, err)
 		return err
 	}
+
 	lgr("RemoveAll %s %q\n", fs.bucket, path)
 	return nil
 }
@@ -185,6 +211,7 @@ func (fs Fs) Rename(oldname, newname string) error {
 		lgr("Rename %s %q %q (no-op)\n", fs.bucket, oldname, newname)
 		return nil
 	}
+
 	_, err := fs.s3API.CopyObjectWithContext(fs.ctx, &s3.CopyObjectInput{
 		Bucket:               aws.String(fs.bucket),
 		CopySource:           aws.String(fs.bucket + oldname),
@@ -195,12 +222,19 @@ func (fs Fs) Rename(oldname, newname string) error {
 		lgr("Rename %s copy %q %q > %+v\n", fs.bucket, oldname, newname, err)
 		return err
 	}
+
 	_, err = fs.s3API.DeleteObjectWithContext(fs.ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(fs.bucket),
 		Key:    aws.String(oldname),
 	})
-	lgr("Rename %s %q %q > %+v\n", fs.bucket, oldname, newname, err)
-	return err
+
+	if err != nil {
+		lgr("Rename %s %q %q > %+v\n", fs.bucket, oldname, newname, err)
+		return err
+	}
+
+	lgr("Rename %s %q %q\n", fs.bucket, oldname, newname)
+	return nil
 }
 
 func hasTrailingSlash(s string) bool {

@@ -1,0 +1,18 @@
+#!/bin/bash -e
+
+function v
+{
+  echo
+  echo $@
+  $@
+}
+
+go get \
+  golang.org/x/tools/go/analysis/passes/shadow/cmd/shadow \
+  github.com/sqs/goreturns
+
+v go mod download
+v go test .
+v goreturns -l -w *.go
+v go vet .
+v go vet -vettool=$(type -p shadow) .

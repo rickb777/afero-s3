@@ -3,17 +3,17 @@ package s3
 import (
 	"bytes"
 	"context"
-	"github.com/aws/aws-sdk-go/aws"
-	"github.com/aws/aws-sdk-go/aws/request"
-	"github.com/aws/aws-sdk-go/service/s3"
-	"github.com/onsi/gomega/gstruct"
 	"io"
 	"io/ioutil"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/request"
+	"github.com/aws/aws-sdk-go/service/s3"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/gstruct"
 	"github.com/spf13/afero"
 )
 
@@ -23,34 +23,6 @@ var _ afero.File = (*File)(nil)
 
 // test s3.FileInfo is compatible with os.FileInfo
 var _ os.FileInfo = (*FileInfo)(nil)
-
-//func TestS3Upload(t *testing.T) {
-//	g := NewGomegaWithT(t)
-//
-//	sess, err := session.NewSession(&aws.Config{
-//		Region:      aws.String("eu-west-1"),
-//		Credentials: credentials.NewSharedCredentials("", "mh"),
-//	})
-//	g.Expect(err).NotTo(HaveOccurred())
-//
-//	fs := NewFs("image-stock", s3.New(sess))
-//	// could populate this from /etc/mime.types
-//	fs.AddMimeTypes(map[string]string{
-//		"txt": "text/plain",
-//	})
-//
-//	f, err := fs.Create("/hello.txt")
-//	g.Expect(err).NotTo(HaveOccurred())
-//
-//	_, err = f.WriteString("So shaken as we are,\nSo wan with care!\n")
-//	g.Expect(err).NotTo(HaveOccurred())
-//
-//	_, err = f.WriteString("Find we a time for frighted peace to pant\nand breath short-winded accents of new broils...\n")
-//	g.Expect(err).NotTo(HaveOccurred())
-//
-//	err = f.Close()
-//	g.Expect(err).NotTo(HaveOccurred())
-//}
 
 func TestName(t *testing.T) {
 	g := NewGomegaWithT(t)
