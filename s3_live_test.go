@@ -26,8 +26,10 @@ func TestS3Operations(t *testing.T) {
 	wd, err := os.Getwd()
 	g.Expect(err).NotTo(HaveOccurred())
 
+	dir := "/test-" + time.Now().Format("20060102150405")
+
 	t.Log("Testing against local file system")
-	doTestFsOperations(g, afero.NewBasePathFs(afero.NewOsFs(), wd))
+	doTestFsOperations(t, wd, dir, afero.NewBasePathFs(afero.NewOsFs(), wd))
 
 	if region != "" && bucket != "" {
 		SetLogger(func(format string, v ...interface{}) {
@@ -48,12 +50,21 @@ func TestS3Operations(t *testing.T) {
 		})
 
 		t.Logf("Testing against S3 bucket %s in %s", bucket, region)
-		doTestFsOperations(g, fs)
+		doTestFsOperations(t, wd, dir, fs)
 	}
 }
 
-func doTestFsOperations(g *GomegaWithT, fs afero.Fs) {
-	d := "/test-" + time.Now().Format("20060102150405")
+func doTestFsOperations(t *testing.T, wd, d string, fs afero.Fs) {
+	g := NewGomegaWithT(t)
+
+	//----- text file fails with no-such-directory
+	//TODO fix this
+	//writeTextFile(t, fs, d+"/ab/cd/henryIVp1.txt", henryIVp1, &os.PathError{
+	//	Op:   "open",
+	//	Path: wd + d + "/ab/cd/henryIVp1.txt",
+	//	Err:  syscall.ENOENT,
+	//})
+
 	err := fs.MkdirAll(d+"/ab/cd", 0755)
 	g.Expect(err).NotTo(HaveOccurred())
 
@@ -61,10 +72,10 @@ func doTestFsOperations(g *GomegaWithT, fs afero.Fs) {
 	g.Expect(err).NotTo(HaveOccurred())
 
 	//----- first text file
-	writeTextFile(g, fs, d+"/ab/cd/henryIVp1.txt", henryIVp1)
+	writeTextFile(t, fs, d+"/ab/cd/henryIVp1.txt", henryIVp1, nil)
 
 	//----- second text file
-	writeTextFile(g, fs, d+"/ab/cd/henryIVp2.txt", henryIVp2)
+	writeTextFile(t, fs, d+"/ab/cd/henryIVp2.txt", henryIVp2, nil)
 
 	//----- list the enclosing directory
 	f, err := fs.Open(d + "/ab/cd")
@@ -110,8 +121,16 @@ func doTestFsOperations(g *GomegaWithT, fs afero.Fs) {
 	g.Expect(os.IsNotExist(err)).To(BeTrue())
 }
 
-func writeTextFile(g *GomegaWithT, fs afero.Fs, name, content string) {
+func writeTextFile(t *testing.T, fs afero.Fs, name, content string, expected error) {
+	t.Helper()
+	g := NewGomegaWithT(t)
+
 	f, err := fs.Create(name)
+	if expected != nil {
+		g.Expect(err).To(Equal(expected))
+		return
+	}
+
 	g.Expect(err).NotTo(HaveOccurred())
 
 	for _, s := range strings.Split(content, "\n") {

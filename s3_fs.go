@@ -87,11 +87,12 @@ func (fs Fs) Create(name string) (afero.File, error) {
 
 // Mkdir makes a directory in S3.
 func (fs Fs) Mkdir(name string, perm os.FileMode) error {
-	_, err := fs.OpenFile(fmt.Sprintf("%s/", filepath.Clean(name)), os.O_CREATE, perm)
+	file, err := fs.OpenFile(fmt.Sprintf("%s/", filepath.Clean(name)), os.O_CREATE, perm)
 	if err != nil {
 		lgr("Mkdir %s %q, %v > %+v\n", fs.bucket, name, perm, err)
 		return err
 	}
+	defer file.Close()
 
 	lgr("Mkdir %s %q, %v\n", fs.bucket, name, perm)
 	return nil
@@ -123,6 +124,8 @@ func (fs Fs) OpenFile(name string, flag int, perm os.FileMode) (afero.File, erro
 	}
 
 	if flag&os.O_CREATE != 0 {
+		// write some empty content, forcing the file to
+		// be created upon Close.
 		if _, err := file.WriteString(""); err != nil {
 			lgr("OpenFile %s %q > %+v\n", fs.bucket, name, err)
 			return file, err
@@ -319,13 +322,15 @@ func (fs Fs) statDirectory(name string) (os.FileInfo, error) {
 }
 
 // Chmod is TODO
-func (Fs) Chmod(name string, mode os.FileMode) error {
-	panic("implement Chmod")
+func (fs Fs) Chmod(name string, mode os.FileMode) error {
+	lgr("Chmod %s %q %x -- ignored by S3\n", fs.bucket, name, mode)
+	return nil
 }
 
 // Chtimes is TODO
-func (Fs) Chtimes(name string, atime time.Time, mtime time.Time) error {
-	panic("implement Chtimes")
+func (fs Fs) Chtimes(name string, atime time.Time, mtime time.Time) error {
+	lgr("Chtimes %s %q %x %s -- ignored by S3\n", fs.bucket, name, atime, mtime)
+	return nil
 }
 
 // SetLogger sets a debug logger for observing S3 accesses. This is
