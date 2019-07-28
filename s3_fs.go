@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
@@ -111,12 +112,12 @@ func (fs Fs) Open(name string) (afero.File, error) {
 	}
 
 	lgr("Open %s %q\n", fs.bucket, name)
-	return NewFile(fs.bucket, name, fs.s3API, fs).WithContext(fs.ctx), nil
+	return NewFile(fs.bucket, name, fs.s3API, fs), nil
 }
 
 // OpenFile opens a file.
 func (fs Fs) OpenFile(name string, flag int, perm os.FileMode) (afero.File, error) {
-	file := NewFile(fs.bucket, name, fs.s3API, fs).WithContext(fs.ctx)
+	file := NewFile(fs.bucket, name, fs.s3API, fs)
 
 	if flag&os.O_APPEND != 0 {
 		lgr("OpenFile %s %q append disallowed\n", fs.bucket, name)
@@ -173,7 +174,7 @@ func (fs Fs) ForceRemove(name string) error {
 
 // RemoveAll removes a path.
 func (fs Fs) RemoveAll(path string) error {
-	s3dir := NewFile(fs.bucket, path, fs.s3API, fs).WithContext(fs.ctx)
+	s3dir := NewFile(fs.bucket, path, fs.s3API, fs)
 	fis, err := s3dir.Readdir(0)
 	if err != nil {
 		lgr("RemoveAll %s Readdir %q > %+v\n", fs.bucket, path, err)
@@ -321,16 +322,12 @@ func (fs Fs) statDirectory(name string) (os.FileInfo, error) {
 	return NewFileInfo(filepath.Base(name), true, 0, time.Time{}), nil
 }
 
-// Chmod is TODO
 func (fs Fs) Chmod(name string, mode os.FileMode) error {
-	lgr("Chmod %s %q %x -- ignored by S3\n", fs.bucket, name, mode)
-	return nil
+	return syscall.EPERM
 }
 
-// Chtimes is TODO
 func (fs Fs) Chtimes(name string, atime time.Time, mtime time.Time) error {
-	lgr("Chtimes %s %q %x %s -- ignored by S3\n", fs.bucket, name, atime, mtime)
-	return nil
+	return syscall.EPERM
 }
 
 // SetLogger sets a debug logger for observing S3 accesses. This is

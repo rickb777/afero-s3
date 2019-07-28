@@ -2,7 +2,6 @@ package s3
 
 import (
 	"bytes"
-	"context"
 	"crypto/md5"
 	"encoding/base64"
 	"io"
@@ -44,7 +43,7 @@ func NewFile(bucket, name string, s3API S3APISubset, s3Fs Fs) *File {
 		s3Fs:   s3Fs,
 		offset: 0,
 		closed: false,
-		ctx:    context.Background(),
+		ctx:    s3Fs.ctx,
 	}
 }
 

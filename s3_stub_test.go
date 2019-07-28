@@ -31,12 +31,23 @@ func TestName(t *testing.T) {
 	g.Expect(fs.Name()).To(Equal("S3/mybucket"))
 }
 
+func TestWithContext(t *testing.T) {
+	g := NewGomegaWithT(t)
+
+	c2 := context.WithValue(context.Background(), "x", "v")
+	fs := NewFs("mybucket", nil).WithContext(c2)
+	g.Expect(fs.ctx).To(Equal(c2))
+
+	file := NewFile("mybucket", "foo", nil, *fs)
+	g.Expect(file.ctx).To(Equal(c2))
+}
+
 func TestReadAFile(t *testing.T) {
 	g := NewGomegaWithT(t)
 
 	bigJunk := make([]byte, 10*1024*1024)
 	stub := &s3stub{buf: bytes.NewBuffer(bigJunk)}
-	fs := NewFs("mybucket", stub).WithContext(context.Background())
+	fs := NewFs("mybucket", stub)
 
 	f, err := fs.Open("/a/b/c.png")
 	g.Expect(err).NotTo(HaveOccurred())
@@ -56,7 +67,7 @@ func TestWriteABigFile(t *testing.T) {
 	bigJunk := make([]byte, 10*1024*1024)
 	buf := bytes.NewBuffer(bigJunk)
 	stub := &s3stub{buf: buf}
-	fs := NewFs("mybucket", stub).WithContext(context.Background())
+	fs := NewFs("mybucket", stub)
 
 	f, err := fs.Create("/a/b/c.png")
 	g.Expect(err).NotTo(HaveOccurred())
