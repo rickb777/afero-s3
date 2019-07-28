@@ -115,11 +115,14 @@ func (f *File) Readdir(n int) ([]os.FileInfo, error) {
 	return fis, nil
 }
 
+// maxObjectsPerRequest is the upper limit of objects returned per request to ListObjectsV2WithContext
+const maxObjectsPerRequest = 1000
+
 // ReaddirAll provides list of file info.
 func (f *File) ReaddirAll() ([]os.FileInfo, error) {
 	fileInfos := []os.FileInfo{}
 	for {
-		infos, err := f.Readdir(1024)
+		infos, err := f.Readdir(maxObjectsPerRequest)
 		fileInfos = append(fileInfos, infos...)
 		if err != nil {
 			if err == io.EOF {
