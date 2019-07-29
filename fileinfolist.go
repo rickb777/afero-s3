@@ -113,6 +113,20 @@ func (list FileInfoList) Partition(p func(FileInfo) bool) (FileInfoList, FileInf
 
 //-------------------------------------------------------------------------------------------------
 
+func (list FileInfoList) SortByPath() FileInfoList {
+	return list.StableSortBy(func(i, j FileInfo) bool {
+		return i.Path() < j.Path()
+	})
+}
+
+func (list FileInfoList) SortByDeepestFirst() FileInfoList {
+	return list.StableSortBy(func(i, j FileInfo) bool {
+		return i.depth > j.depth
+	})
+}
+
+//-------------------------------------------------------------------------------------------------
+
 type sortableFileInfoList struct {
 	less func(i, j FileInfo) bool
 	m    []FileInfo

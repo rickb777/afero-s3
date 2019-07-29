@@ -19,3 +19,21 @@ func trimTrailingSlash(s string) string {
 	}
 	return s
 }
+
+func addTrailingSlash(s string) string {
+	last := len(s) - 1
+	if len(s) > 0 && s[last] != '/' {
+		return s + PathSeparator
+	}
+	return s
+}
+
+func depth(s string) int {
+	d := 0
+	for _, c := range s {
+		if c == '/' {
+			d++
+		}
+	}
+	return d
+}

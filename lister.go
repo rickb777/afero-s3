@@ -2,9 +2,11 @@ package s3
 
 import (
 	"math"
+	"path"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/rickb777/collection"
 )
 
 // File represents a file in S3.
@@ -18,7 +20,7 @@ type Lister struct {
 	ctx       aws.Context
 }
 
-func (f *Lister) doListObjects(n int, continuationToken *string) (FileInfoList, *string, bool, error) {
+func (f *Lister) doListObjects(n int, filesOnly bool, continuationToken *string) (FileInfoList, *string, bool, error) {
 	// ListObjects treats leading slashes as part of the directory name
 	// It also needs a trailing slash to list contents of a directory.
 	// If n > 1000, AWS returns only the first 1000 keys.
@@ -41,20 +43,40 @@ func (f *Lister) doListObjects(n int, continuationToken *string) (FileInfoList, 
 		fis = append(fis, NewDirectoryInfo(PathSeparator+*subfolder.Prefix))
 	}
 
+	var dirs collection.StringSet
+	if !filesOnly {
+		dirs = collection.NewStringSet()
+	}
+
 	for _, fileObject := range output.Contents {
+		p := PathSeparator + *fileObject.Key
 		if hasTrailingSlash(*fileObject.Key) {
 			// S3 includes <name>/ in the Contents listing for <name>
-			continue
+			if !filesOnly {
+				dir := NewDirectoryInfo(p)
+				fis = append(fis, dir)
+				parent := trimTrailingSlash(dir.parent)
+				for len(parent) > len(f.name) {
+					dirs.Add(parent)
+					parent = trimTrailingSlash(path.Dir(parent))
+				}
+			}
+		} else {
+			fis = append(fis, NewFileInfo(p, *fileObject.Size, *fileObject.LastModified))
 		}
+	}
 
-		fis = append(fis, NewFileInfo(PathSeparator+*fileObject.Key, *fileObject.Size, *fileObject.LastModified))
+	if dirs.NonEmpty() {
+		for _, d := range dirs.ToList() {
+			fis = append(fis, NewDirectoryInfo(d))
+		}
 	}
 
 	return fis, output.NextContinuationToken, *output.IsTruncated, nil
 }
 
 // ListObjects lists all objects in the bucket starting with the lister's name.
-func (f *Lister) ListObjects(max int) (FileInfoList, error) {
+func (f *Lister) ListObjects(max int, filesOnly bool) (FileInfoList, error) {
 	if max <= 0 {
 		max = math.MaxInt64
 	}
@@ -70,7 +92,7 @@ func (f *Lister) ListObjects(max int) (FileInfoList, error) {
 
 		var infos FileInfoList
 		var err error
-		infos, continuationToken, hasMore, err = f.doListObjects(n, continuationToken)
+		infos, continuationToken, hasMore, err = f.doListObjects(n, filesOnly, continuationToken)
 		fileInfos = append(fileInfos, infos...)
 
 		if err != nil {

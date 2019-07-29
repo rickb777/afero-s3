@@ -146,62 +146,58 @@ func (fs Fs) Remove(name string) error {
 	if _, err := fs.Stat(name); err != nil {
 		return err
 	}
-	_, err := fs.s3API.DeleteObjectWithContext(fs.ctx, &s3.DeleteObjectInput{
-		Bucket: aws.String(fs.bucket),
-		Key:    aws.String(name),
-	})
-
-	if err != nil {
-		lgr("Remove %s %q > %+v\n", fs.bucket, name, err)
-		return err
-	}
-
-	lgr("Remove %s %q\n", fs.bucket, name)
-	return nil
+	return fs.doForceRemove(name, "Remove")
 }
 
 // ForceRemove doesn't error if a file does not exist.
 func (fs Fs) ForceRemove(name string) error {
+	return fs.doForceRemove(name, "ForceRemove")
+}
+
+// ForceRemove doesn't error if a file does not exist.
+func (fs Fs) doForceRemove(name, info string) error {
 	_, err := fs.s3API.DeleteObjectWithContext(fs.ctx, &s3.DeleteObjectInput{
 		Bucket: aws.String(fs.bucket),
 		Key:    aws.String(name),
 	})
 
 	if err != nil {
-		lgr("ForceRemove %s %q > %+v\n", fs.bucket, name, err)
+		lgr("%s %s %q > %+v\n", info, fs.bucket, name, err)
 		return err
 	}
 
-	lgr("ForceRemove %s %q\n", fs.bucket, name)
+	lgr("%s %s %q\n", info, fs.bucket, name)
 	return nil
 }
 
 // RemoveAll removes a path.
 func (fs Fs) RemoveAll(name string) error {
-	s3dir := NewFile(fs.bucket, name, fs.s3API, fs)
-	fis, err := s3dir.Readdir(0)
+	fis, err := fs.ListObjects(name, 0, false)
 	if err != nil {
 		lgr("RemoveAll %s Readdir %q > %+v\n", fs.bucket, name, err)
 		return err
 	}
 
-	for _, fi := range fis {
-		fullpath := path.Join(s3dir.Name(), fi.Name())
-		if fi.IsDir() {
-			if err := fs.RemoveAll(fullpath); err != nil {
-				lgr("RemoveAll %s %q > %+v\n", fs.bucket, name, err)
-				return err
-			}
-		} else {
-			if err := fs.ForceRemove(fullpath); err != nil {
-				lgr("RemoveAll %s %q > %+v\n", fs.bucket, name, err)
-				return err
-			}
+	dirs, files := fis.SortByDeepestFirst().Partition(func(info FileInfo) bool {
+		return info.IsDir()
+	})
+
+	for _, fi := range files {
+		if err := fs.ForceRemove(fi.Path()); err != nil {
+			lgr("RemoveAll %s %q > %+v\n", fs.bucket, name, err)
+			return err
+		}
+	}
+
+	for _, fi := range dirs {
+		if err := fs.ForceRemove(addTrailingSlash(fi.Path())); err != nil {
+			lgr("RemoveAll %s %q > %+v\n", fs.bucket, name, err)
+			return err
 		}
 	}
 
 	// finally remove the "file" representing the directory
-	if err := fs.ForceRemove(s3dir.Name() + "/"); err != nil {
+	if err := fs.ForceRemove(name); err != nil {
 		lgr("RemoveAll %s %q > %+v\n", fs.bucket, name, err)
 		return err
 	}
@@ -319,22 +315,17 @@ func (fs Fs) statDirectory(name string) (os.FileInfo, error) {
 // more than 'max' results are returned, however 'max' is ignored if it is negative.
 //
 // This is an extension to the Afero Fs API.
-func (fs Fs) ListObjects(prefix string, max int) (FileInfoList, error) {
+func (fs Fs) ListObjects(prefix string, max int, filesOnly bool) (FileInfoList, error) {
 	lister := Lister{
 		bucket:    fs.bucket,
 		name:      prefix,
-		delimiter: aws.String(PathSeparator),
+		delimiter: nil, // include sub-objects
 		s3Fs:      fs,
 		s3API:     fs.s3API,
 		ctx:       fs.ctx,
 	}
 
-	list, err := lister.ListObjects(max)
-	if err != nil {
-		return nil, err
-	}
-
-	return list, nil
+	return lister.ListObjects(max, filesOnly)
 }
 
 func (fs Fs) Chmod(name string, mode os.FileMode) error {

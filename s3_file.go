@@ -70,16 +70,8 @@ func (f *File) Name() string { return f.name }
 // directory, Readdir returns the FileInfo read until that point
 // and a non-nil error.
 func (f *File) Readdir(n int) ([]os.FileInfo, error) {
-	lister := Lister{
-		bucket:    f.bucket,
-		name:      f.name,
-		delimiter: aws.String(PathSeparator),
-		s3Fs:      f.s3Fs,
-		s3API:     f.s3API,
-		ctx:       f.ctx,
-	}
-
-	list, err := lister.ListObjects(n)
+	lister := f.lister(aws.String(PathSeparator))
+	list, err := lister.ListObjects(n, true)
 	if err != nil {
 		return nil, err
 	}
@@ -89,16 +81,8 @@ func (f *File) Readdir(n int) ([]os.FileInfo, error) {
 
 // ReaddirAll provides list of file info.
 func (f *File) ReaddirAll() ([]os.FileInfo, error) {
-	lister := Lister{
-		bucket:    f.bucket,
-		name:      f.name,
-		delimiter: aws.String(PathSeparator),
-		s3Fs:      f.s3Fs,
-		s3API:     f.s3API,
-		ctx:       f.ctx,
-	}
-
-	list, err := lister.ListObjects(-1)
+	lister := f.lister(aws.String(PathSeparator))
+	list, err := lister.ListObjects(-1, true)
 	if err != nil {
 		return nil, err
 	}
@@ -125,6 +109,17 @@ func (f *File) Readdirnames(n int) ([]string, error) {
 		_, names[i] = path.Split(f.Name())
 	}
 	return names, err
+}
+
+func (f *File) lister(delimiter *string) Lister {
+	return Lister{
+		bucket:    f.bucket,
+		name:      f.name,
+		delimiter: delimiter,
+		s3Fs:      f.s3Fs,
+		s3API:     f.s3API,
+		ctx:       f.ctx,
+	}
 }
 
 // Stat returns the FileInfo structure describing file.

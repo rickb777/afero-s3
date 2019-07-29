@@ -16,6 +16,7 @@ type FileInfo struct {
 	directory   bool
 	sizeInBytes int64
 	modTime     time.Time
+	depth       int
 }
 
 // NewFileInfo creates file info.
@@ -27,6 +28,7 @@ func NewFileInfo(name string, sizeInBytes int64, modTime time.Time) FileInfo {
 		directory:   false,
 		sizeInBytes: sizeInBytes,
 		modTime:     modTime,
+		depth:       depth(parent),
 	}
 }
 
@@ -37,6 +39,7 @@ func NewDirectoryInfo(name string) FileInfo {
 		parent:    parent,
 		name:      file,
 		directory: true,
+		depth:     depth(parent),
 	}
 }
 
