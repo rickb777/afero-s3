@@ -2,11 +2,16 @@ package s3
 
 import (
 	"os"
+	"path"
 	"time"
 )
 
+// PathSeparator is always a forward slash. This is consistent and not OS-specific.
+const PathSeparator = "/"
+
 // FileInfo implements os.FileInfo for a file in S3.
 type FileInfo struct {
+	parent      string
 	name        string
 	directory   bool
 	sizeInBytes int64
@@ -14,17 +19,43 @@ type FileInfo struct {
 }
 
 // NewFileInfo creates file info.
-func NewFileInfo(name string, directory bool, sizeInBytes int64, modTime time.Time) FileInfo {
+func NewFileInfo(name string, sizeInBytes int64, modTime time.Time) FileInfo {
+	parent, file := path.Split(name)
 	return FileInfo{
-		name:        name,
-		directory:   directory,
+		parent:      parent,
+		name:        file,
+		directory:   false,
 		sizeInBytes: sizeInBytes,
 	}
 }
 
-// Name provides the base name of the file.
+// NewFileInfo creates directory info.
+func NewDirectoryInfo(name string) FileInfo {
+	parent, file := path.Split(name)
+	return FileInfo{
+		parent:    parent,
+		name:      file,
+		directory: true,
+	}
+}
+
+// Name provides the base name of the file. This does not have a leading '/'.
 func (fi FileInfo) Name() string {
 	return fi.name
+}
+
+// Parent provides the name of the containing directory. This normally ends with
+// '/' or is blank.
+func (fi FileInfo) Parent() string {
+	return fi.parent
+}
+
+// Path provides the full path of the file within the S3 bucket.
+func (fi FileInfo) Path() string {
+	if fi.parent == "" {
+		return fi.name
+	}
+	return fi.parent + fi.name
 }
 
 // Size provides the length in bytes for a file.

@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -80,12 +79,12 @@ func (f *File) Readdir(n int) ([]os.FileInfo, error) {
 
 	// ListObjects treats leading slashes as part of the directory name
 	// It also needs a trailing slash to list contents of a directory.
-	name := trimLeadingSlash(f.Name()) + "/"
+	name := trimLeadingSlash(f.Name()) + PathSeparator
 	output, err := f.s3API.ListObjectsV2WithContext(f.ctx, &s3.ListObjectsV2Input{
 		ContinuationToken: f.readdirContinuationToken,
 		Bucket:            aws.String(f.bucket),
 		Prefix:            aws.String(name),
-		Delimiter:         aws.String("/"),
+		Delimiter:         aws.String(PathSeparator),
 		MaxKeys:           aws.Int64(int64(n)),
 	})
 
@@ -98,9 +97,9 @@ func (f *File) Readdir(n int) ([]os.FileInfo, error) {
 		f.readdirNotTruncated = true
 	}
 
-	fis := []os.FileInfo{}
+	fis := make([]os.FileInfo, 0)
 	for _, subfolder := range output.CommonPrefixes {
-		fis = append(fis, NewFileInfo(filepath.Base("/"+*subfolder.Prefix), true, 0, time.Time{}))
+		fis = append(fis, NewDirectoryInfo(PathSeparator+*subfolder.Prefix))
 	}
 
 	for _, fileObject := range output.Contents {
@@ -109,7 +108,7 @@ func (f *File) Readdir(n int) ([]os.FileInfo, error) {
 			continue
 		}
 
-		fis = append(fis, NewFileInfo(filepath.Base("/"+*fileObject.Key), false, *fileObject.Size, *fileObject.LastModified))
+		fis = append(fis, NewFileInfo(PathSeparator+*fileObject.Key, *fileObject.Size, *fileObject.LastModified))
 	}
 
 	return fis, nil
@@ -120,7 +119,7 @@ const maxObjectsPerRequest = 1000
 
 // ReaddirAll provides list of file info.
 func (f *File) ReaddirAll() ([]os.FileInfo, error) {
-	fileInfos := []os.FileInfo{}
+	fileInfos := make([]os.FileInfo, 0)
 	for {
 		infos, err := f.Readdir(maxObjectsPerRequest)
 		fileInfos = append(fileInfos, infos...)

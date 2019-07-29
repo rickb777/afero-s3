@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"syscall"
@@ -92,7 +93,7 @@ func (fs Fs) Create(name string) (afero.File, error) {
 
 // Mkdir makes a directory in S3.
 func (fs Fs) Mkdir(name string, perm os.FileMode) error {
-	file, err := fs.OpenFile(fmt.Sprintf("%s/", filepath.Clean(name)), os.O_CREATE, perm)
+	file, err := fs.OpenFile(fmt.Sprintf("%s/", path.Clean(name)), os.O_CREATE, perm)
 	if err != nil {
 		lgr("Mkdir %s %q, %v > %+v\n", fs.bucket, name, perm, err)
 		return err
@@ -201,7 +202,7 @@ func (fs Fs) RemoveAll(path string) error {
 	}
 
 	// finally remove the "file" representing the directory
-	if err := fs.ForceRemove(s3dir.Name() + "/"); err != nil {
+	if err := fs.ForceRemove(s3dir.Name() + PathSeparator); err != nil {
 		lgr("RemoveAll %s %q > %+v\n", fs.bucket, path, err)
 		return err
 	}
@@ -293,7 +294,7 @@ func (fs Fs) Stat(name string) (os.FileInfo, error) {
 	}
 
 	lgr("Stat %s %q\n", fs.bucket, name)
-	return NewFileInfo(filepath.Base(name), false, *out.ContentLength, *out.LastModified), nil
+	return NewFileInfo(name, *out.ContentLength, *out.LastModified), nil
 }
 
 func (fs Fs) statDirectory(name string) (os.FileInfo, error) {
@@ -323,7 +324,7 @@ func (fs Fs) statDirectory(name string) (os.FileInfo, error) {
 	}
 
 	lgr("Stat %s %q is directory\n", fs.bucket, name)
-	return NewFileInfo(filepath.Base(name), true, 0, time.Time{}), nil
+	return NewDirectoryInfo(name), nil
 }
 
 func (fs Fs) Chmod(name string, mode os.FileMode) error {

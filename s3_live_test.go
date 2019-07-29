@@ -55,7 +55,7 @@ func TestS3Operations(t *testing.T) {
 
 		t.Logf("Testing against S3 bucket %s in %s", bucket, region)
 		doTestFsOperations(t, wd, dir, remote)
-		doTestLargeNumberOfFiles(t, wd, dir, remote)
+		//doTestLargeNumberOfFiles(t, wd, dir, remote)
 		doCleanup(t, wd, dir, remote)
 	}
 }
