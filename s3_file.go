@@ -6,7 +6,8 @@ import (
 	"encoding/base64"
 	"io"
 	"os"
-	"path/filepath"
+	"path"
+	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -99,7 +100,7 @@ func (f *File) Readdir(n int) ([]os.FileInfo, error) {
 
 	fis := make([]os.FileInfo, 0)
 	for _, subfolder := range output.CommonPrefixes {
-		fis = append(fis, NewDirectoryInfo(PathSeparator+*subfolder.Prefix))
+		fis = append(fis, NewFileInfo(path.Base(PathSeparator+*subfolder.Prefix), true, 0, time.Time{}))
 	}
 
 	for _, fileObject := range output.Contents {
@@ -108,7 +109,7 @@ func (f *File) Readdir(n int) ([]os.FileInfo, error) {
 			continue
 		}
 
-		fis = append(fis, NewFileInfo(PathSeparator+*fileObject.Key, *fileObject.Size, *fileObject.LastModified))
+		fis = append(fis, NewFileInfo(path.Base(PathSeparator+*fileObject.Key), false, *fileObject.Size, *fileObject.LastModified))
 	}
 
 	return fis, nil
@@ -150,7 +151,7 @@ func (f *File) Readdirnames(n int) ([]string, error) {
 	fi, err := f.Readdir(n)
 	names := make([]string, len(fi))
 	for i, f := range fi {
-		_, names[i] = filepath.Split(f.Name())
+		_, names[i] = path.Split(f.Name())
 	}
 	return names, err
 }
@@ -367,7 +368,7 @@ func (f *File) finaliseWrite() error {
 }
 
 func (f *File) lookupContentType() *string {
-	ext := filepath.Ext(f.name)
+	ext := path.Ext(f.name)
 	if len(ext) > 1 {
 		if ext[0] == '.' {
 			ext = ext[1:]

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path"
-	"path/filepath"
 	"strings"
 	"syscall"
 	"time"
@@ -178,36 +177,36 @@ func (fs Fs) ForceRemove(name string) error {
 }
 
 // RemoveAll removes a path.
-func (fs Fs) RemoveAll(path string) error {
-	s3dir := NewFile(fs.bucket, path, fs.s3API, fs)
+func (fs Fs) RemoveAll(name string) error {
+	s3dir := NewFile(fs.bucket, name, fs.s3API, fs)
 	fis, err := s3dir.Readdir(0)
 	if err != nil {
-		lgr("RemoveAll %s Readdir %q > %+v\n", fs.bucket, path, err)
+		lgr("RemoveAll %s Readdir %q > %+v\n", fs.bucket, name, err)
 		return err
 	}
 
 	for _, fi := range fis {
-		fullpath := filepath.Join(s3dir.Name(), fi.Name())
+		fullpath := path.Join(s3dir.Name(), fi.Name())
 		if fi.IsDir() {
 			if err := fs.RemoveAll(fullpath); err != nil {
-				lgr("RemoveAll %s %q > %+v\n", fs.bucket, path, err)
+				lgr("RemoveAll %s %q > %+v\n", fs.bucket, name, err)
 				return err
 			}
 		} else {
 			if err := fs.ForceRemove(fullpath); err != nil {
-				lgr("RemoveAll %s %q > %+v\n", fs.bucket, path, err)
+				lgr("RemoveAll %s %q > %+v\n", fs.bucket, name, err)
 				return err
 			}
 		}
 	}
 
 	// finally remove the "file" representing the directory
-	if err := fs.ForceRemove(s3dir.Name() + PathSeparator); err != nil {
-		lgr("RemoveAll %s %q > %+v\n", fs.bucket, path, err)
+	if err := fs.ForceRemove(s3dir.Name() + "/"); err != nil {
+		lgr("RemoveAll %s %q > %+v\n", fs.bucket, name, err)
 		return err
 	}
 
-	lgr("RemoveAll %s %q\n", fs.bucket, path)
+	lgr("RemoveAll %s %q\n", fs.bucket, name)
 	return nil
 }
 
@@ -260,7 +259,7 @@ func trimLeadingSlash(s string) string {
 // Stat returns a FileInfo describing the named file.
 // If there is an error, it will be of type *os.PathError.
 func (fs Fs) Stat(name string) (os.FileInfo, error) {
-	nameClean := filepath.Clean(name)
+	nameClean := path.Clean(name)
 	out, err := fs.s3API.HeadObjectWithContext(fs.ctx, &s3.HeadObjectInput{
 		Bucket: aws.String(fs.bucket),
 		Key:    aws.String(nameClean),
@@ -294,11 +293,11 @@ func (fs Fs) Stat(name string) (os.FileInfo, error) {
 	}
 
 	lgr("Stat %s %q\n", fs.bucket, name)
-	return NewFileInfo(name, *out.ContentLength, *out.LastModified), nil
+	return NewFileInfo(path.Base(name), false, *out.ContentLength, *out.LastModified), nil
 }
 
 func (fs Fs) statDirectory(name string) (os.FileInfo, error) {
-	nameClean := filepath.Clean(name)
+	nameClean := path.Clean(name)
 	out, err := fs.s3API.ListObjectsV2WithContext(fs.ctx, &s3.ListObjectsV2Input{
 		Bucket:  aws.String(fs.bucket),
 		Prefix:  aws.String(trimLeadingSlash(nameClean)),
@@ -324,7 +323,7 @@ func (fs Fs) statDirectory(name string) (os.FileInfo, error) {
 	}
 
 	lgr("Stat %s %q is directory\n", fs.bucket, name)
-	return NewDirectoryInfo(name), nil
+	return NewFileInfo(path.Base(name), true, 0, time.Time{}), nil
 }
 
 func (fs Fs) Chmod(name string, mode os.FileMode) error {
