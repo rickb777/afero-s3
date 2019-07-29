@@ -315,6 +315,28 @@ func (fs Fs) statDirectory(name string) (os.FileInfo, error) {
 	return NewDirectoryInfo(name), nil
 }
 
+// ListObjects gets a list of all the files in the bucket with a given prefix. No
+// more than 'max' results are returned, however 'max' is ignored if it is negative.
+//
+// This is an extension to the Afero Fs API.
+func (fs Fs) ListObjects(prefix string, max int) (FileInfoList, error) {
+	lister := Lister{
+		bucket:    fs.bucket,
+		name:      prefix,
+		delimiter: aws.String(PathSeparator),
+		s3Fs:      fs,
+		s3API:     fs.s3API,
+		ctx:       fs.ctx,
+	}
+
+	list, err := lister.ListObjects(max)
+	if err != nil {
+		return nil, err
+	}
+
+	return list, nil
+}
+
 func (fs Fs) Chmod(name string, mode os.FileMode) error {
 	return syscall.EPERM
 }

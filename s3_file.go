@@ -70,68 +70,40 @@ func (f *File) Name() string { return f.name }
 // directory, Readdir returns the FileInfo read until that point
 // and a non-nil error.
 func (f *File) Readdir(n int) ([]os.FileInfo, error) {
-	if f.readdirNotTruncated {
-		return nil, io.EOF
-	}
-	if n <= 0 {
-		return f.ReaddirAll()
+	lister := Lister{
+		bucket:    f.bucket,
+		name:      f.name,
+		delimiter: aws.String(PathSeparator),
+		s3Fs:      f.s3Fs,
+		s3API:     f.s3API,
+		ctx:       f.ctx,
 	}
 
-	// ListObjects treats leading slashes as part of the directory name
-	// It also needs a trailing slash to list contents of a directory.
-	name := trimLeadingSlash(f.Name()) + PathSeparator
-	output, err := f.s3API.ListObjectsV2WithContext(f.ctx, &s3.ListObjectsV2Input{
-		ContinuationToken: f.readdirContinuationToken,
-		Bucket:            aws.String(f.bucket),
-		Prefix:            aws.String(name),
-		Delimiter:         aws.String(PathSeparator),
-		MaxKeys:           aws.Int64(int64(n)),
-	})
-
+	list, err := lister.ListObjects(n)
 	if err != nil {
 		return nil, err
 	}
 
-	f.readdirContinuationToken = output.NextContinuationToken
-	if !(*output.IsTruncated) {
-		f.readdirNotTruncated = true
-	}
-
-	fis := make([]os.FileInfo, 0)
-	for _, subfolder := range output.CommonPrefixes {
-		fis = append(fis, NewDirectoryInfo(PathSeparator+*subfolder.Prefix))
-	}
-
-	for _, fileObject := range output.Contents {
-		if hasTrailingSlash(*fileObject.Key) {
-			// S3 includes <name>/ in the Contents listing for <name>
-			continue
-		}
-
-		fis = append(fis, NewFileInfo(PathSeparator+*fileObject.Key, *fileObject.Size, *fileObject.LastModified))
-	}
-
-	return fis, nil
+	return list.ToSlice(), nil
 }
-
-// maxObjectsPerRequest is the upper limit of objects returned per request to ListObjectsV2WithContext
-const maxObjectsPerRequest = 1000
 
 // ReaddirAll provides list of file info.
 func (f *File) ReaddirAll() ([]os.FileInfo, error) {
-	fileInfos := make([]os.FileInfo, 0)
-	for {
-		infos, err := f.Readdir(maxObjectsPerRequest)
-		fileInfos = append(fileInfos, infos...)
-		if err != nil {
-			if err == io.EOF {
-				break
-			} else {
-				return nil, err
-			}
-		}
+	lister := Lister{
+		bucket:    f.bucket,
+		name:      f.name,
+		delimiter: aws.String(PathSeparator),
+		s3Fs:      f.s3Fs,
+		s3API:     f.s3API,
+		ctx:       f.ctx,
 	}
-	return fileInfos, nil
+
+	list, err := lister.ListObjects(-1)
+	if err != nil {
+		return nil, err
+	}
+
+	return list.ToSlice(), nil
 }
 
 // Readdirnames reads and returns a slice of names from the directory f.
