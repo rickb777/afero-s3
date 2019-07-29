@@ -55,7 +55,7 @@ func TestS3Operations(t *testing.T) {
 
 		t.Logf("Testing against S3 bucket %s in %s", bucket, region)
 		doTestFsOperations(t, wd, dir, remote)
-		//doTestLargeNumberOfFiles(t, wd, dir, remote)
+		doTestLargeNumberOfFiles(t, wd, dir, remote)
 		doCleanup(t, wd, dir, remote)
 	}
 }
@@ -127,7 +127,7 @@ func doTestLargeNumberOfFiles(t *testing.T, wd, d string, fs afero.Fs) {
 	const (
 		nh = 1
 		ni = 1
-		nj = 10
+		nj = 5
 		nk = 11
 		n  = nh * ni * nj * nk
 	)

@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path"
-	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/service/s3"
@@ -100,7 +99,7 @@ func (f *File) Readdir(n int) ([]os.FileInfo, error) {
 
 	fis := make([]os.FileInfo, 0)
 	for _, subfolder := range output.CommonPrefixes {
-		fis = append(fis, NewFileInfo(path.Base(PathSeparator+*subfolder.Prefix), true, 0, time.Time{}))
+		fis = append(fis, NewDirectoryInfo(PathSeparator+*subfolder.Prefix))
 	}
 
 	for _, fileObject := range output.Contents {
@@ -109,7 +108,7 @@ func (f *File) Readdir(n int) ([]os.FileInfo, error) {
 			continue
 		}
 
-		fis = append(fis, NewFileInfo(path.Base(PathSeparator+*fileObject.Key), false, *fileObject.Size, *fileObject.LastModified))
+		fis = append(fis, NewFileInfo(PathSeparator+*fileObject.Key, *fileObject.Size, *fileObject.LastModified))
 	}
 
 	return fis, nil

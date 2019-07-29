@@ -245,17 +245,6 @@ func (fs Fs) Rename(oldname, newname string) error {
 	return nil
 }
 
-func hasTrailingSlash(s string) bool {
-	return len(s) > 0 && s[len(s)-1] == '/'
-}
-
-func trimLeadingSlash(s string) string {
-	if len(s) > 0 && s[0] == '/' {
-		return s[1:]
-	}
-	return s
-}
-
 // Stat returns a FileInfo describing the named file.
 // If there is an error, it will be of type *os.PathError.
 func (fs Fs) Stat(name string) (os.FileInfo, error) {
@@ -293,7 +282,7 @@ func (fs Fs) Stat(name string) (os.FileInfo, error) {
 	}
 
 	lgr("Stat %s %q\n", fs.bucket, name)
-	return NewFileInfo(path.Base(name), false, *out.ContentLength, *out.LastModified), nil
+	return NewFileInfo(name, *out.ContentLength, *out.LastModified), nil
 }
 
 func (fs Fs) statDirectory(name string) (os.FileInfo, error) {
@@ -323,7 +312,7 @@ func (fs Fs) statDirectory(name string) (os.FileInfo, error) {
 	}
 
 	lgr("Stat %s %q is directory\n", fs.bucket, name)
-	return NewFileInfo(path.Base(name), true, 0, time.Time{}), nil
+	return NewDirectoryInfo(name), nil
 }
 
 func (fs Fs) Chmod(name string, mode os.FileMode) error {

@@ -1,4 +1,7 @@
-## Readme
+## afero-s3
+
+[![GoDoc](https://img.shields.io/badge/api-Godoc-blue.svg?style=flat-square)](https://godoc.org/github.com/rickb777/afero-s3)
+[![Issues](https://img.shields.io/github/issues/rickb777/afero-s3.svg)](https://github.com/rickb777/afero-s3/issues)
 
 Provide afero filesystem with S3 as backend.
 
