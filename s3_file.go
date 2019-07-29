@@ -14,7 +14,7 @@ import (
 )
 
 // File represents a file in S3.
-// It is not threadsafe.
+// It is not safe to share File objects between goroutines.
 type File struct {
 	bucket string
 	name   string

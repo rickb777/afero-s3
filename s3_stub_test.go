@@ -35,10 +35,12 @@ func TestWithContext(t *testing.T) {
 	g := NewGomegaWithT(t)
 
 	c2 := context.WithValue(context.Background(), "x", "v")
-	fs := NewFs("mybucket", nil).WithContext(c2)
-	g.Expect(fs.ctx).To(Equal(c2))
+	fs0 := NewFs("mybucket", nil)
+	fs1 := fs0.WithContext(c2)
+	g.Expect(fs1.ctx).To(Equal(c2))
+	g.Expect(fs1).NotTo(BeIdenticalTo(c2))
 
-	file := NewFile("mybucket", "foo", nil, *fs)
+	file := NewFile("mybucket", "foo", nil, *fs1)
 	g.Expect(file.ctx).To(Equal(c2))
 }
 

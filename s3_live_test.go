@@ -1,6 +1,7 @@
 package s3
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"testing"
@@ -29,7 +30,10 @@ func TestS3Operations(t *testing.T) {
 	dir := "/test-" + time.Now().Format("20060102150405")
 
 	t.Log("Testing against local file system")
-	doTestFsOperations(t, wd, dir, afero.NewBasePathFs(afero.NewOsFs(), wd))
+	local := afero.NewBasePathFs(afero.NewOsFs(), wd)
+	doTestFsOperations(t, wd, dir, local)
+	doTestLargeNumberOfFiles(t, wd, dir, local)
+	doCleanup(t, wd, dir, local)
 
 	if region != "" && bucket != "" {
 		SetLogger(func(format string, v ...interface{}) {
@@ -43,14 +47,16 @@ func TestS3Operations(t *testing.T) {
 		})
 		g.Expect(err).NotTo(HaveOccurred())
 
-		fs := NewFs(bucket, s3.New(sess))
+		remote := NewFs(bucket, s3.New(sess))
 		// could populate this from /etc/mime.types
-		fs.AddMimeTypes(map[string]string{
+		remote.AddMimeTypes(map[string]string{
 			"txt": "text/plain",
 		})
 
 		t.Logf("Testing against S3 bucket %s in %s", bucket, region)
-		doTestFsOperations(t, wd, dir, fs)
+		doTestFsOperations(t, wd, dir, remote)
+		doTestLargeNumberOfFiles(t, wd, dir, remote)
+		doCleanup(t, wd, dir, remote)
 	}
 }
 
@@ -113,12 +119,66 @@ func doTestFsOperations(t *testing.T, wd, d string, fs afero.Fs) {
 
 	_, err = fs.Open(d)
 	g.Expect(err).NotTo(HaveOccurred())
+}
 
-	err = fs.RemoveAll(d)
+func doTestLargeNumberOfFiles(t *testing.T, wd, d string, fs afero.Fs) {
+	g := NewGomegaWithT(t)
+
+	const (
+		nh = 1
+		ni = 1
+		nj = 10
+		nk = 11
+		n  = nh * ni * nj * nk
+	)
+
+	t.Logf("creating large number of (small) files...\n")
+	for h := 0; h < nh; h++ {
+		for i := 0; i < ni; i++ {
+			t.Logf("files %d, %d, ...\n", h, i)
+			for j := 0; j < nj; j++ {
+				for k := 0; k < nk; k++ {
+					err := fs.MkdirAll(fmt.Sprintf("%s/%02d/%02d/%02d", d, h, i, j), 0755)
+					g.Expect(err).NotTo(HaveOccurred())
+					writeTextFile(t, fs, fmt.Sprintf("%s/%02d/%02d/%02d/%02d.txt", d, h, i, j, k), henryIVp2, nil)
+				}
+			}
+		}
+	}
+	t.Logf("done creating files.\n")
+
+	countFiles(t, d, fs, nh+1)
+	for h := 0; h < nh; h++ {
+		countFiles(t, fmt.Sprintf("%s/%02d", d, h), fs, ni)
+		for i := 0; i < ni; i++ {
+			countFiles(t, fmt.Sprintf("%s/%02d/%02d", d, h, i), fs, nj)
+			for j := 0; j < nj; j++ {
+				countFiles(t, fmt.Sprintf("%s/%02d/%02d/%02d", d, h, i, j), fs, nk)
+			}
+		}
+	}
+}
+
+func doCleanup(t *testing.T, wd, d string, fs afero.Fs) {
+	g := NewGomegaWithT(t)
+
+	err := fs.RemoveAll(d)
 	g.Expect(err).NotTo(HaveOccurred())
 
 	_, err = fs.Open(d)
 	g.Expect(os.IsNotExist(err)).To(BeTrue())
+}
+
+func countFiles(t *testing.T, d string, fs afero.Fs, expected int) {
+	g := NewGomegaWithT(t)
+
+	file, err := fs.Open(d)
+	g.Expect(err).NotTo(HaveOccurred())
+	defer file.Close()
+
+	list, err := file.Readdir(-1)
+	g.Expect(err).NotTo(HaveOccurred())
+	g.Expect(list).To(HaveLen(expected))
 }
 
 func writeTextFile(t *testing.T, fs afero.Fs, name, content string, expected error) {

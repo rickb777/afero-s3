@@ -16,7 +16,9 @@ import (
 	"github.com/spf13/afero"
 )
 
-// Fs is an FS object backed by S3.
+// Fs is an FS object backed by S3. It is safe to share Fs objects between
+// goroutines. Note that WithContext and AddMimeTypes modify and return a new
+// version of the Fs object.
 type Fs struct {
 	bucket    string
 	s3API     S3APISubset
@@ -40,18 +42,20 @@ func (fs Fs) WithContext(ctx aws.Context) *Fs {
 	return &fs
 }
 
-// AddMimeTypes adds MIME types. When uploading (i.e. writing) files, these are
-// used to set the content type based on the file extension.
+// AddMimeTypes adds MIME types to new instance of the file system.
+// When uploading (i.e. writing) files, these are used to set the
+// content type based on the file extension.
 //
 // Any file uploaded without its MIME type defined here will assume the default,
 // application/octet-stream.
-func (fs *Fs) AddMimeTypes(mimeTypes map[string]string) {
+func (fs Fs) AddMimeTypes(mimeTypes map[string]string) *Fs {
 	for k, v := range mimeTypes {
 		if strings.HasPrefix(k, ".") {
 			k = k[1:]
 		}
 		fs.mimeTypes[k] = v
 	}
+	return &fs
 }
 
 // Name returns the type of FS object this is: S3/bucket.
