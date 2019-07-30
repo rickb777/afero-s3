@@ -1,6 +1,7 @@
 package s3
 
 import (
+	"math/rand"
 	"os"
 	"sort"
 )
@@ -19,6 +20,18 @@ func MakeFileInfoList(length, capacity int) FileInfoList {
 	return make(FileInfoList, length, capacity)
 }
 
+// NewFileInfo2List constructs a new list containing the supplied values, if any.
+func NewFileInfo2List(values ...FileInfo) FileInfoList {
+	list := MakeFileInfoList(len(values), len(values))
+	copy(list, values)
+	return list
+}
+
+// Clone returns a shallow copy of the list. It does not clone the underlying elements.
+func (list FileInfoList) Clone() FileInfoList {
+	return NewFileInfo2List(list...)
+}
+
 //-------------------------------------------------------------------------------------------------
 
 // ToSlice adapts the list to the equivalent slice of the base type.
@@ -28,6 +41,40 @@ func (list FileInfoList) ToSlice() []os.FileInfo {
 		l2[i] = fi
 	}
 	return l2
+}
+
+//-------------------------------------------------------------------------------------------------
+
+// DoReverse alters a FileInfoList with all elements in the reverse order.
+// Unlike Reverse, it does not allocate new memory.
+//
+// The list is modified and the modified list is returned.
+func (list FileInfoList) DoReverse() FileInfoList {
+	mid := (len(list) + 1) / 2
+	last := len(list) - 1
+	for i := 0; i < mid; i++ {
+		r := last - i
+		if i != r {
+			list[i], list[r] = list[r], list[i]
+		}
+	}
+	return list
+}
+
+// DoShuffle returns a shuffled FileInfoList, using a version of the Fisher-Yates shuffle.
+//
+// The list is modified and the modified list is returned.
+func (list FileInfoList) DoShuffle() FileInfoList {
+	if list == nil {
+		return nil
+	}
+
+	n := len(list)
+	for i := 0; i < n; i++ {
+		r := i + rand.Intn(n-i)
+		list[i], list[r] = list[r], list[i]
+	}
+	return list
 }
 
 //-------------------------------------------------------------------------------------------------
