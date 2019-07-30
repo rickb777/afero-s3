@@ -76,7 +76,7 @@ func (f *File) Readdir(n int) ([]os.FileInfo, error) {
 		return nil, err
 	}
 
-	return list.ToSlice(), nil
+	return list.ToStdSlice(), nil
 }
 
 // ReaddirAll provides list of file info.
@@ -87,7 +87,7 @@ func (f *File) ReaddirAll() ([]os.FileInfo, error) {
 		return nil, err
 	}
 
-	return list.ToSlice(), nil
+	return list.ToStdSlice(), nil
 }
 
 // Readdirnames reads and returns a slice of names from the directory f.

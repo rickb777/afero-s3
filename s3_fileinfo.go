@@ -6,6 +6,8 @@ import (
 	"time"
 )
 
+//go:generate runtemplate -v -tpl simple/list.tpl Type=FileInfo MapTo:string Comparable:true
+
 // PathSeparator is always a forward slash. This is consistent and not OS-specific.
 const PathSeparator = "/"
 
